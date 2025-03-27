@@ -1,36 +1,46 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
+from django.shortcuts import get_object_or_404
 
 from posts.models import Post, Group, Comment, User, Follow
 
 
 class FollowSerializer(serializers.ModelSerializer):
-    user = serializers.SlugRelatedField(
-        slug_field='username',
-        queryset=User.objects.all(),
-        default=serializers.CurrentUserDefault(),
-    )
+    user = serializers.StringRelatedField(read_only=True, default=serializers.CurrentUserDefault())
     following = serializers.SlugRelatedField(
-        slug_field='username', queryset=User.objects.all()
+        slug_field='username', 
+        queryset=User.objects.all()
     )
 
     class Meta:
         model = Follow
         fields = ('user', 'following')
-        validators = (
+        validators = [
             UniqueTogetherValidator(
                 queryset=Follow.objects.all(),
                 fields=('user', 'following'),
-                message=('Подписка на автора оформлена ранее!'),
-            ),
-        )
+                message='Подписка на автора оформлена ранее!',
+            )
+        ]
 
     def validate_following(self, value):
-        user = self.context['request'].user
-        if user == value:
+        request = self.context.get('request')
+        if request and request.user == value:
             raise serializers.ValidationError(
                 'Нельзя подписаться на самого себя!')
         return value
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        following = validated_data['following']
+        follow = Follow.objects.create(user=user, following=following)
+        return follow
+
+    def to_representation(self, instance):
+        return {
+            'user': instance.user.username,
+            'following': instance.following.username,
+        }
 
 
 class PostSerializer(serializers.ModelSerializer):

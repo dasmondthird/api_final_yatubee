@@ -1,10 +1,12 @@
 from rest_framework.generics import get_object_or_404
 from rest_framework.filters import SearchFilter
 from rest_framework.pagination import LimitOffsetPagination
-from rest_framework import viewsets, permissions, mixins
+from rest_framework import viewsets, permissions, mixins, status
+from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+import logging
 
-from posts.models import Post, Group
+from posts.models import Post, Group, User, Follow
 from .serializers import (
     PostSerializer,
     GroupSerializer,
@@ -12,6 +14,9 @@ from .serializers import (
     FollowSerializer,
 )
 from .permissions import IsAuthorOrReadOnly
+
+# Настройка логгера
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(
@@ -29,12 +34,23 @@ class FollowViewSet(mixins.ListModelMixin,
     serializer_class = FollowSerializer
     filter_backends = [SearchFilter]
     search_fields = ['following__username']
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return self.request.user.follower.all()
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        serializer.save()
+    
+    def create(self, request, *args, **kwargs):
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Error creating follow: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @extend_schema(
